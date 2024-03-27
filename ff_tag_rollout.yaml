@@ -1,0 +1,196 @@
+pipeline:
+  name: ff tag rollout
+  identifier: ff_tag_rollout
+  projectIdentifier: development
+  orgIdentifier: default
+  description: |-
+    Requires a Harness API token with FF read access to be stored as a secret.
+    This example uses one at the account level with an ID of `api`.
+  tags: {}
+  variables:
+    - name: environment
+      type: String
+      description: environment to make the change in
+      required: true
+      value: <+input>
+    - name: flag_tags
+      type: String
+      description: tag of flags to change
+      required: false
+      value: <+input>
+    - name: variation
+      type: String
+      description: variation of the flag to target users with
+      required: true
+      value: <+input>
+    - name: rollback_variation
+      type: String
+      description: variation of the flag to target users with during a rollback
+      required: true
+      value: <+input>
+    - name: targets
+      type: String
+      description: specific targets to target
+      required: false
+      value: <+input>
+    - name: target_groups
+      type: String
+      description: target groups to target
+      required: false
+      value: <+input>
+    - name: timeout
+      type: String
+      description: timeout for approval
+      required: true
+      value: <+input>
+  stages:
+    - stage:
+        name: ff
+        identifier: ff
+        description: ""
+        type: FeatureFlag
+        spec:
+          execution:
+            steps:
+              - step:
+                  type: ShellScript
+                  name: get flags with tag
+                  identifier: get_flags_with_tag
+                  spec:
+                    shell: Bash
+                    executionTarget: {}
+                    source:
+                      type: Inline
+                      spec:
+                        script: |-
+                          export TAGGED_FLAGS=$(curl -s \
+                            'https://app.harness.io/cf/admin/features?accountIdentifier=<+account.identifier>&orgIdentifier=<+org.identifier>&projectIdentifier=<+project.identifier>&environmentIdentifier=<+pipeline.variables.environment>&pageNumber=0&pageSize=100&archived=false&tags=<+pipeline.variables.flag_tags>' \
+                            -H 'x-api-key: <+secrets.getValue("account.api")>' | jq -r '[.features[].identifier] | join(",")')
+                    environmentVariables: []
+                    outputVariables:
+                      - name: TAGGED_FLAGS
+                        type: String
+                        value: TAGGED_FLAGS
+                  timeout: 10m
+              - parallel:
+                  - step:
+                      type: FlagConfiguration
+                      name: toggle targets
+                      identifier: toggle_targets
+                      spec:
+                        feature: <+matrix.flag>
+                        environment: <+pipeline.variables.environment>
+                        instructions:
+                          - identifier: SetFeatureFlagStateIdentifier
+                            type: SetFeatureFlagState
+                            spec:
+                              state: "on"
+                          - spec:
+                              variation: <+pipeline.variables.variation>
+                              targets: <+pipeline.variables.targets.split(",")>
+                            identifier: AddTargetsToVariationTargetMapIdentifier
+                            type: AddTargetsToVariationTargetMap
+                      timeout: 10m
+                      when:
+                        stageStatus: Success
+                        condition: (<+pipeline.variables.targets> != null) && (<+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS> != null)
+                      strategy:
+                        matrix:
+                          flag: <+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS.split(",")>
+                  - step:
+                      type: FlagConfiguration
+                      name: toggle groups
+                      identifier: toggle_groups
+                      spec:
+                        feature: <+matrix.flag>
+                        environment: <+pipeline.variables.environment>
+                        instructions:
+                          - identifier: SetFeatureFlagStateIdentifier
+                            type: SetFeatureFlagState
+                            spec:
+                              state: "on"
+                          - spec:
+                              variation: <+pipeline.variables.variation>
+                              segments: <+pipeline.variables.target_groups.split(",")>
+                            identifier: AddSegmentToVariationTargetMapIdentifier
+                            type: AddSegmentToVariationTargetMap
+                      timeout: 10m
+                      when:
+                        stageStatus: Success
+                        condition: (<+pipeline.variables.target_groups> != null) && (<+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS> != null)
+                      strategy:
+                        matrix:
+                          flag: <+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS.split(",")>
+              - step:
+                  type: HarnessApproval
+                  name: rollback
+                  identifier: rollback
+                  spec:
+                    approvalMessage: |-
+                      Do we need to rollback the toggle?
+                      APPROVE to continue rollout.
+                      DENY to rollback.
+                    includePipelineExecutionHistory: true
+                    isAutoRejectEnabled: false
+                    approvers:
+                      userGroups:
+                        - approvers
+                      minimumCount: 1
+                      disallowPipelineExecutor: false
+                    approverInputs: []
+                  timeout: 10s
+                  failureStrategies:
+                    - onFailure:
+                        errors:
+                          - Timeout
+                        action:
+                          type: MarkAsSuccess
+              - parallel:
+                  - step:
+                      type: FlagConfiguration
+                      name: rollback targets
+                      identifier: rollback_targets
+                      spec:
+                        feature: <+matrix.flag>
+                        environment: <+pipeline.variables.environment>
+                        instructions:
+                          - identifier: SetFeatureFlagStateIdentifier
+                            type: SetFeatureFlagState
+                            spec:
+                              state: "on"
+                          - spec:
+                              variation: <+pipeline.variables.rollback_variation>
+                              targets: <+pipeline.variables.targets.split(",")>
+                            identifier: AddTargetsToVariationTargetMapIdentifier
+                            type: AddTargetsToVariationTargetMap
+                      timeout: 10m
+                      when:
+                        stageStatus: Failure
+                        condition: (<+pipeline.variables.targets> != null) && (<+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS> != null) && (<+execution.steps.rollback.output.approvalActivities[0].action> == "REJECT")
+                      strategy:
+                        matrix:
+                          flag: <+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS.split(",")>
+                  - step:
+                      type: FlagConfiguration
+                      name: rollback groups
+                      identifier: rollback_groups
+                      spec:
+                        feature: <+matrix.flag>
+                        environment: <+pipeline.variables.environment>
+                        instructions:
+                          - identifier: SetFeatureFlagStateIdentifier
+                            type: SetFeatureFlagState
+                            spec:
+                              state: "on"
+                          - spec:
+                              variation: <+pipeline.variables.rollback_variation>
+                              segments: <+pipeline.variables.target_groups.split(",")>
+                            identifier: AddSegmentToVariationTargetMapIdentifier
+                            type: AddSegmentToVariationTargetMap
+                      timeout: 10m
+                      when:
+                        stageStatus: Failure
+                        condition: (<+pipeline.variables.target_groups> != null) && (<+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS> != null) && (<+execution.steps.rollback.output.approvalActivities[0].action> == "REJECT")
+                      strategy:
+                        matrix:
+                          flag: <+pipeline.stages.ff.execution.steps.get_flags_with_tag.output.outputVariables.TAGGED_FLAGS.split(",")>
