@@ -27,5 +27,5 @@ FF_SDK_KEY=XXXX python main.py
 ### docker
 
 ```
-docker run -e FF_SDK_KEY=XXXX --rm -it harnesscommunity/feature-flag-connection-test
+docker run -e FF_SDK_KEY=XXXX --rm -it harnesscommunity/feature-flag-connection-test python main.py
 ```

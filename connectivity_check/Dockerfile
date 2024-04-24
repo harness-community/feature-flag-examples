@@ -6,4 +6,6 @@ COPY *.py requirements.txt ./
 
 RUN pip install -r requirements.txt
 
-ENTRYPOINT python main.py
+# ENTRYPOINT python main.py
+
+CMD uvicorn --host 0.0.0.0 --port 8080 main:app

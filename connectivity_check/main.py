@@ -8,10 +8,19 @@ from featureflags.config import with_base_url
 from featureflags.client import CfClient
 from featureflags.util import log
 
+from fastapi import FastAPI, Response
+
+
 log.setLevel(DEBUG)
 
+app = FastAPI()
 
-def main():
+
+def get_client() -> CfClient:
+    """
+    Get a FF client using config from env
+    """
+
     if not (sdk_key := getenv("FF_SDK_KEY")):
         log.error("Set SDK key with FF_SDK_KEY")
 
@@ -24,11 +33,30 @@ def main():
 
     log.info(f"connecting to ff at {config_addr}")
 
-    client = CfClient(
+    return CfClient(
         sdk_key,
         with_base_url(config_addr),
         with_events_url(events_addr),
     )
+
+
+@app.get("/health", status_code=201)
+def health(response: Response):
+    """
+    Tell if we are connected to the saas/proxy
+    """
+
+    client = get_client()
+
+    client.wait_for_initialization()
+
+    if client._initialised_failed_reason[True]:
+        response.status_code = 500
+
+
+def main():
+
+    client = get_client()
 
     target = Target(
         identifier="connectionCheck",
