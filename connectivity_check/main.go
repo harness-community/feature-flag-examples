@@ -6,11 +6,17 @@ import (
 	"os"
 
 	harness "github.com/harness/ff-golang-server-sdk/client"
+	"github.com/harness/ff-golang-server-sdk/evaluation"
 )
 
 var (
-	apiKey            string = os.Getenv("FF_SDK_KEY")
-	connectionAddress string = os.Getenv("RELAY_PROXY_ADDRESS")
+	apiKey            string            = os.Getenv("FF_SDK_KEY")
+	connectionAddress string            = os.Getenv("RELAY_PROXY_ADDRESS")
+	flagId            string            = os.Getenv("FF_ID")
+	target            evaluation.Target = evaluation.Target{
+		Identifier: "ffProxyCanary",
+		Name:       "ffProxyCanary",
+	}
 )
 
 func main() {
@@ -18,16 +24,30 @@ func main() {
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 
-		log.Printf("Headers: %s", r.Header)
-
-		client, err := harness.NewCfClient(apiKey, harness.WithURL(connectionAddress), harness.WithEventsURL(connectionAddress), harness.WithWaitForInitialized(true), harness.WithMaxAuthRetries(5))
+		client, err := harness.NewCfClient(
+			apiKey,
+			harness.WithURL(connectionAddress),
+			harness.WithEventsURL(connectionAddress),
+			harness.WithWaitForInitialized(true),
+			harness.WithMaxAuthRetries(5),
+		)
 
 		if err != nil {
 			log.Printf("could not connect to FF endpoint %s: %s\n", connectionAddress, err)
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 		} else {
-			log.Printf("connected to FF endpoint %s: %s\n", connectionAddress, err)
-			w.WriteHeader(http.StatusOK)
+			log.Printf("connected to FF endpoint %s\n", connectionAddress)
+
+			if flagId != "" {
+				result, err := client.BoolVariation(flagId, &target, false)
+				if err != nil {
+					log.Printf("failed to get evaluation: %s", err)
+					w.WriteHeader(http.StatusInternalServerError)
+				} else {
+					log.Printf("got evaluation: %t", result)
+					w.WriteHeader(http.StatusNoContent)
+				}
+			}
 		}
 
 		client.Close()
