@@ -1,4 +1,0 @@
-# always get latest
-harness-featureflags
-fastapi==0.90.1
-uvicorn[standard]

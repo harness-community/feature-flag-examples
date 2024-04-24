@@ -1,11 +1,17 @@
-FROM python:3.12
+FROM golang:1.22 as base
 
-WORKDIR /app
+WORKDIR /
 
-COPY *.py requirements.txt ./
+COPY . ./
 
-RUN pip install -r requirements.txt
+RUN go build -o app *.go
 
-# ENTRYPOINT python main.py
+CMD ./app
 
-CMD uvicorn --host 0.0.0.0 --port 8080 main:app
+FROM debian:12-slim
+
+COPY --from=base /app ./
+
+EXPOSE 8080
+
+CMD ./app
