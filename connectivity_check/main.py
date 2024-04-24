@@ -52,6 +52,8 @@ def health(response: Response):
 
     if client._initialised_failed_reason[True]:
         response.status_code = 500
+    
+    client.close()
 
 
 def main():
