@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: canary
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: canary
+    spec:
+      containers:
+      - name: canary
+        image: harnesscommunity/feature-flag-connectivity-check:latest
+        imagePullPolicy: Always
+        restartPolicy: Always
+        env:
+        - name: RELAY_PROXY_ADDRESS
+          value: <proxy url>
+        - name: FF_SDK_KEY
+          value: <sdk key>
+        - name: FF_ID
+          value: <flag to resolve (optional)>
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+        resources:
+          limits:
+            memory: 50Mi
+          requests:
+            cpu: 10m
+            memory: 10Mi

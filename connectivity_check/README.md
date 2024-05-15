@@ -1,6 +1,6 @@
 # connectivity check
 
-python script to test connectivity to harness, or your proxy
+go script to test connectivity to harness, or your proxy
 
 ## setup
 
@@ -15,17 +15,23 @@ the following environment variables are needed:
 
 ## running
 
-you can run the script via python or docker
+you can run the script via go or docker, or k8s
 
-### python
+### go
 
 ```
-pip install -r requirements.txt
-FF_SDK_KEY=XXXX python main.py
+FF_SDK_KEY=XXXX go run main.go
 ```
 
 ### docker
 
 ```
-docker run -e FF_SDK_KEY=XXXX --rm -it harnesscommunity/feature-flag-connection-test python main.py
+docker run -e FF_SDK_KEY=XXXX --rm -it harnesscommunity/feature-flag-connectivity-check:latest
+```
+
+### k8s
+
+fill in the deployment yaml and then:
+```
+kubectl apply -f deployment.yaml
 ```
